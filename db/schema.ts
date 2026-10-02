@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, timestamp, pgEnum, integer, boolean } from "drizzle-orm/pg-core";
 
-const statusEnum = pgEnum("status", ["pending", "retrying", "delivered", "failed"]);
+export const statusEnum = pgEnum("status", ["pending", "retrying", "delivered", "failed"]);
 
 export const destinations = pgTable("destinations", {
     id: uuid("id").defaultRandom().primaryKey(),
