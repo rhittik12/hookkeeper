@@ -13,6 +13,7 @@ export const events = pgTable("events", {
     id: uuid("id").defaultRandom().primaryKey(),
     destinationId: uuid("destination_id").notNull().references(() => destinations.id),
     type: varchar("type", { length: 100 }).notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 100 }).notNull().unique(),
     status: statusEnum("status").default("pending").notNull(),
     attempts: integer("attempts").default(0).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
