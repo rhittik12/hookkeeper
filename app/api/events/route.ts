@@ -6,6 +6,7 @@ import { z } from "zod";
 const createEventSchema = z.object({
     destinationId: z.string().uuid({ message: "destinationId must be a valid UUID" }),
     type: z.string().min(1, { message: "type is required" }),
+    idempotencyKey: z.string().min(1, { message: "idempotencyKey is required" }),
 });
 
 export async function POST(req: Request) {
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
             );
         }
 
-        const { destinationId, type } = parsed.data;
+        const { destinationId, type, idempotencyKey } = parsed.data;
 
         const destination = await db
             .select()
@@ -33,15 +34,30 @@ export async function POST(req: Request) {
             return Response.json({ error: "Destination not found" }, { status: 404 });
         }
 
-        const [event] = await db
-            .insert(events)
-            .values({
-                destinationId,
-                type,
-            })
-            .returning();
+        try {
+            const [event] = await db
+                .insert(events)
+                .values({
+                    destinationId,
+                    type,
+                    idempotencyKey,
+                })
+                .returning();
 
-        return Response.json(event, { status: 201 });
+            return Response.json(event, { status: 201 });
+
+        } catch (insertError: any) {
+            if (insertError.cause?.code === "23505") {
+                const [existingEvent] = await db
+                    .select()
+                    .from(events)
+                    .where(eq(events.idempotencyKey, idempotencyKey))
+                    .limit(1);
+
+                return Response.json(existingEvent, { status: 200 });
+            }
+            throw insertError;
+        }
 
     } catch (error) {
         console.error("Error creating event:", error);
