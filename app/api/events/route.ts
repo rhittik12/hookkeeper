@@ -2,6 +2,7 @@ import { db } from "@/db/index";
 import { events, destinations } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { deliveryQueue } from "@/lib/queue";
 
 const createEventSchema = z.object({
     destinationId: z.string().uuid({ message: "destinationId must be a valid UUID" }),
@@ -37,12 +38,18 @@ export async function POST(req: Request) {
         try {
             const [event] = await db
                 .insert(events)
-                .values({
-                    destinationId,
-                    type,
-                    idempotencyKey,
-                })
+                .values({ destinationId, type, idempotencyKey })
                 .returning();
+
+            try {
+                await deliveryQueue.add(
+                    "deliver-event",
+                    { eventId: event.id, destinationUrl: destination[0].url },
+                    { jobId: event.id }
+                );
+            } catch (queueError) {
+                console.error("Failed to queue event:", event.id, queueError);
+            }
 
             return Response.json(event, { status: 201 });
 
