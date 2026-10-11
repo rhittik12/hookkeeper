@@ -43,7 +43,7 @@ export async function POST(req: Request) {
 
             try {
                 await deliveryQueue.add(
-                    "deliver-event",
+                    "deliveryQueue",
                     { eventId: event.id, destinationUrl: destination[0].url },
                     { jobId: event.id }
                 );

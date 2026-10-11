@@ -3,7 +3,7 @@ import { deliveryQueue } from "../lib/queue";
 
 async function main() {
   const job = await deliveryQueue.add(
-    "deliver-event",
+    "deliveryQueue",
     { eventId: "test-123", destinationUrl: "https://webhook.site/test" },
     { jobId: "test-job-" + Date.now() }
   );
