@@ -7,4 +7,5 @@ if (!redisUrl) {
   throw new Error("REDIS_URL is not defined in the environment variables.");
 }
 
-export const redisConnection = new ioredis(redisUrl,{maxRetriesPerRequest: null});
+export const redisConnection = new ioredis(redisUrl, { maxRetriesPerRequest: null, enableReadyCheck: false, });
+console.log("Connecting to Redis host:", redisUrl?.split("@")[1]);
