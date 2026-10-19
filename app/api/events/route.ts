@@ -45,7 +45,11 @@ export async function POST(req: Request) {
                 await deliveryQueue.add(
                     "deliveryQueue",
                     { eventId: event.id, destinationUrl: destination[0].url },
-                    { jobId: event.id }
+                    {
+                        jobId: event.id,
+                        attempts: 5,
+                        backoff: { type: "exponential", delay: 3000 }
+                    }
                 );
             } catch (queueError) {
                 console.error("Failed to queue event:", event.id, queueError);
