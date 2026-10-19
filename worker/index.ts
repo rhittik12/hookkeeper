@@ -21,6 +21,8 @@ const worker = new Worker(
         }
 
         const attemptNumber = event.attempts + 1;
+        const maxAttempts = job.opts.attempts ?? 1;
+        const isLastAttempt = job.attemptsMade + 1 >= maxAttempts;
 
         let success = false;
         let errorMessage: string | null = null;
@@ -57,7 +59,7 @@ const worker = new Worker(
         await db
             .update(events)
             .set({
-                status: success ? "delivered" : "failed",
+                status: success ? "delivered" : isLastAttempt ? "failed" : "retrying",
                 attempts: attemptNumber,
                 updatedAt: new Date(),
             })
