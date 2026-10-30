@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, pgEnum, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, timestamp, pgEnum, integer, boolean, index } from "drizzle-orm/pg-core";
 
 export const statusEnum = pgEnum("status", ["pending", "retrying", "delivered", "failed"]);
 
@@ -18,7 +18,9 @@ export const events = pgTable("events", {
     attempts: integer("attempts").default(0).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull()
-})
+}, (table) => ({
+    statusCreatedAtIdx: index("events_status_created_at_idx").on(table.status, table.createdAt),
+}));
 
 export const deliveryAttempts = pgTable("delivery_attempts", {
     id: uuid("id").defaultRandom().primaryKey(),
