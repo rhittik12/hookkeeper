@@ -1,0 +1,1 @@
+CREATE INDEX "events_status_created_at_idx" ON "events" USING btree ("status","created_at");
