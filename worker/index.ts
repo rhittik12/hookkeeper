@@ -1,8 +1,9 @@
 import "dotenv/config";
 import { Worker } from "bullmq";
+import { createHmac } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "../db/index";
-import { events, deliveryAttempts } from "../db/schema";
+import { events, deliveryAttempts, destinations } from "../db/schema";
 import { redisConnection } from "../lib/redis";
 
 const worker = new Worker(
@@ -28,15 +29,35 @@ const worker = new Worker(
         let errorMessage: string | null = null;
 
         try {
+            const body = JSON.stringify({
+                id: event.id,
+                type: event.type,
+                createdAt: event.createdAt.toISOString(),
+            });
+
+            const destination = await db
+                .select()
+                .from(destinations)
+                .where(eq(destinations.id, event.destinationId))
+                .limit(1);
+
+            if (destination.length === 0) {
+                throw new Error(`Destination with ID ${event.destinationId} not found`);
+            }
+
+            const signature = createHmac("sha256", destination[0].secret)
+                .update(body)
+                .digest("hex");
+
             const res = await fetch(destinationUrl,
                 {
                     method: "POST",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({
-                        id: event.id,
-                        type: event.type,
-                        createdAt: event.createdAt.toISOString(),
-                    }),
+                    headers:
+                    {
+                        "content-type": "application/json",
+                        "X-Webhook-Signature": signature
+                    },
+                    body: body,
                     signal: AbortSignal.timeout(5000)
                 })
 
