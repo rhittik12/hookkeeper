@@ -31,9 +31,33 @@ export default function DashboardPage() {
     }
 
     useEffect(() => {
+        let isFetching = false;
+
+        async function fetchEvents() {
+            if (isFetching || document.hidden) return;
+            isFetching = true;
+            try {
+                const res = await fetch("/api/events");
+                const data = await res.json();
+                setEvents(data);
+                setLoading(false);
+            } finally {
+                isFetching = false;
+            }
+        }
+
         fetchEvents();
-        const interval = setInterval(fetchEvents, 5000);
-        return () => clearInterval(interval);
+        const interval = setInterval(fetchEvents, 15000);
+
+        function handleVisibilityChange() {
+            if (!document.hidden) fetchEvents();
+        }
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+        };
     }, []);
 
     async function handleReplay(id: string) {
