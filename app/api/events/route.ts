@@ -1,6 +1,6 @@
 import { db } from "@/db/index";
 import { events, destinations } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import { deliveryQueue } from "@/lib/queue";
 
@@ -75,3 +75,18 @@ export async function POST(req: Request) {
         return Response.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
+
+export async function GET() {
+    try {
+        const allEvents = await db
+            .select()
+            .from(events)
+            .orderBy(desc(events.createdAt))
+            .limit(50);
+
+        return Response.json(allEvents, { status: 200 });
+    } catch (error) {
+        console.error("Error fetching events:", error);
+        return Response.json({ error: "Internal Server Error" }, { status: 500 });
+    }
+} 
