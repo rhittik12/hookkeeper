@@ -1,14 +1,15 @@
 import "dotenv/config";
-import { Worker } from "bullmq";
+import { DelayedError, Worker } from "bullmq";
 import { createHmac } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "../db/index";
 import { events, deliveryAttempts, destinations } from "../db/schema";
 import { redisConnection } from "../lib/redis";
+import { canAttemptDelivery } from "../lib/rateLimiter";
 
 const worker = new Worker(
     "deliveryQueue",
-    async (job) => {
+    async (job, token) => {
         const { eventId, destinationUrl } = job.data;
 
         const [event] = await db
@@ -19,6 +20,15 @@ const worker = new Worker(
 
         if (!event) {
             throw new Error(`Event with ID ${eventId} not found`);
+        }
+
+        const allowed = await canAttemptDelivery(event.destinationId);
+
+        if (!allowed) {
+            const jitter = Math.random() * 500;
+            console.log(`Rate limited: delaying event ${event.id} for destination ${event.destinationId}`);
+            await job.moveToDelayed(Date.now() + 2000 + jitter, token);
+            throw new DelayedError();
         }
 
         const attemptNumber = event.attempts + 1;
@@ -88,7 +98,7 @@ const worker = new Worker(
 
         if (!success) throw new Error(errorMessage ?? "Delivery failed ");
     },
-    { connection: redisConnection }
+    { connection: redisConnection, concurrency: 10 }
 );
 
 worker.on("completed", (job) => console.log(`Delivered job ${job.id}`));
