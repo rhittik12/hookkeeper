@@ -76,13 +76,33 @@ export async function POST(req: Request) {
     }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
     try {
-        const allEvents = await db
-            .select()
-            .from(events)
-            .orderBy(desc(events.createdAt))
-            .limit(50);
+        const statusParam = new URL(req.url).searchParams.get("status");
+        const parsedStatus = statusParam === null
+            ? undefined
+            : z.enum(["all", "pending", "retrying", "delivered", "failed"]).safeParse(statusParam);
+
+        if (parsedStatus && !parsedStatus.success) {
+            return Response.json({ error: "Invalid status filter" }, { status: 400 });
+        }
+
+        const status = parsedStatus?.success && parsedStatus.data !== "all"
+            ? parsedStatus.data
+            : undefined;
+
+        const allEvents = status
+            ? await db
+                .select()
+                .from(events)
+                .where(eq(events.status, status))
+                .orderBy(desc(events.createdAt))
+                .limit(50)
+            : await db
+                .select()
+                .from(events)
+                .orderBy(desc(events.createdAt))
+                .limit(50);
 
         return Response.json(allEvents, { status: 200 });
     } catch (error) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type EventStatus = "pending" | "retrying" | "delivered" | "failed";
 type EventRecord = {
@@ -12,6 +12,7 @@ type EventRecord = {
   updatedAt: string;
 };
 type StatusFilter = "all" | EventStatus;
+type EventCounts = Record<StatusFilter, number>;
 
 const statusLabels: Record<EventStatus, string> = {
   delivered: "Delivered",
@@ -20,7 +21,13 @@ const statusLabels: Record<EventStatus, string> = {
   pending: "Pending",
 };
 
-const filters: StatusFilter[] = ["all", "delivered", "retrying", "failed", "pending"];
+const filters: StatusFilter[] = ["all", "pending", "retrying", "delivered", "failed"];
+
+function isEventCounts(value: unknown): value is EventCounts {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return filters.every((status) => typeof candidate[status] === "number");
+}
 
 function Icon({
   name,
@@ -82,27 +89,60 @@ function formatTime(value: string) {
 
 export default function DashboardPage() {
   const [events, setEvents] = useState<EventRecord[]>([]);
+  const [counts, setCounts] = useState<EventCounts>({
+    all: 0,
+    pending: 0,
+    retrying: 0,
+    delivered: 0,
+    failed: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [replayingId, setReplayingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
+  const requestId = useRef(0);
+  const selectedFilter = useRef<StatusFilter>("all");
 
-  const fetchEvents = useCallback(async (silent = false) => {
+  const fetchEvents = useCallback(async (
+    silent = false,
+    requestedFilter: StatusFilter = selectedFilter.current,
+  ) => {
+    const currentRequestId = ++requestId.current;
     if (!silent) setRefreshing(true);
     try {
-      const response = await fetch("/api/events");
+      const endpoint = requestedFilter === "all"
+        ? "/api/events"
+        : `/api/events?status=${requestedFilter}`;
+      const [response, countsResponse] = await Promise.all([
+        fetch(endpoint),
+        fetch("/api/events/counts"),
+      ]);
       if (!response.ok) throw new Error(`Request failed (${response.status})`);
-      const data: unknown = await response.json();
-      if (!Array.isArray(data)) throw new Error("Unexpected response from the events API");
-      setEvents(data as EventRecord[]);
-      setError(null);
+      if (!countsResponse.ok) throw new Error(`Request failed (${countsResponse.status})`);
+
+      const [data, countData]: [unknown, unknown] = await Promise.all([
+        response.json(),
+        countsResponse.json(),
+      ]);
+      if (!Array.isArray(data) || !isEventCounts(countData)) {
+        throw new Error("Unexpected response from the events API");
+      }
+      if (requestId.current === currentRequestId) {
+        setEvents(data as EventRecord[]);
+        setCounts(countData);
+        setError(null);
+      }
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Could not load events");
+      if (requestId.current === currentRequestId) {
+        setError(fetchError instanceof Error ? fetchError.message : "Could not load events");
+      }
     } finally {
-      setLoading(false);
-      if (!silent) setRefreshing(false);
+      if (requestId.current === currentRequestId) {
+        setLoading(false);
+        if (!silent) setRefreshing(false);
+      }
     }
   }, []);
 
@@ -135,27 +175,18 @@ export default function DashboardPage() {
     }
   }
 
-  const counts = useMemo(() => ({
-    all: events.length,
-    delivered: events.filter((event) => event.status === "delivered").length,
-    retrying: events.filter((event) => event.status === "retrying").length,
-    failed: events.filter((event) => event.status === "failed").length,
-    pending: events.filter((event) => event.status === "pending").length,
-  }), [events]);
-
   const filteredEvents = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return events.filter((event) => {
-      const matchesStatus = filter === "all" || event.status === filter;
       const matchesQuery = !normalizedQuery ||
         event.id.toLowerCase().includes(normalizedQuery) ||
         event.type.toLowerCase().includes(normalizedQuery);
-      return matchesStatus && matchesQuery;
+      return matchesQuery;
     });
-  }, [events, filter, query]);
+  }, [events, query]);
 
   const statCards = [
-    { label: "Total events", value: counts.all, note: "Most recent 50 events", icon: "inbox" as const },
+    { label: "Total events", value: counts.all, note: "Across all events", icon: "inbox" as const },
     { label: "Delivered", value: counts.delivered, note: "Successfully delivered", icon: "check" as const },
     { label: "Retrying", value: counts.retrying, note: "Waiting for another attempt", icon: "retry" as const },
     { label: "Failed", value: counts.failed, note: "Can be replayed below", icon: "failed" as const },
@@ -248,8 +279,24 @@ export default function DashboardPage() {
 
             <div className="filter-row" aria-label="Filter events by status">
               {filters.map((item) => (
-                <button className={`filter-chip${filter === item ? " filter-chip-active" : ""}`} type="button" key={item} onClick={() => setFilter(item)} aria-pressed={filter === item}>
-                  {item === "all" ? "All events" : statusLabels[item]}
+                <button
+                  className={`filter-chip${filter === item ? " filter-chip-active" : ""}`}
+                  type="button"
+                  key={item}
+                  onClick={() => {
+                    if (filter !== item) {
+                      selectedFilter.current = item;
+                      requestId.current += 1;
+                      setEvents([]);
+                      setError(null);
+                      setLoading(true);
+                      setFilter(item);
+                      void fetchEvents(false, item);
+                    }
+                  }}
+                  aria-pressed={filter === item}
+                >
+                  {item === "all" ? "All" : statusLabels[item]}
                   <span className="filter-count">{counts[item]}</span>
                 </button>
               ))}
@@ -264,9 +311,9 @@ export default function DashboardPage() {
               </div>
             ) : filteredEvents.length === 0 ? (
               <div className="table-state">
-                <span className="table-state-icon"><Icon name={events.length === 0 ? "inbox" : "search"} size={18} /></span>
-                <h3>{events.length === 0 ? "No events yet" : "No matching events"}</h3>
-                <p>{events.length === 0 ? "Events will appear here as soon as your destinations receive traffic." : "Try another search or choose a different status filter."}</p>
+                <span className="table-state-icon"><Icon name={counts.all === 0 ? "inbox" : "search"} size={18} /></span>
+                <h3>{counts.all === 0 ? "No events yet" : "No matching events"}</h3>
+                <p>{counts.all === 0 ? "Events will appear here as soon as your destinations receive traffic." : "Try another search or choose a different status filter."}</p>
               </div>
             ) : (
               <div className="table-scroll">
