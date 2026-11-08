@@ -34,8 +34,8 @@ const TOKEN_BUCKET_SCRIPT = `
 
 export async function canAttemptDelivery(destinationId: string): Promise<boolean> {
     const key = `rate-limit:${destinationId}`;
-    const capacity = 5;
-    const refillRate = 0.5; 
+    const capacity = 40;
+    const refillRate = 5; 
     const now = Date.now() / 1000;
 
     const result = await redisConnection.eval(

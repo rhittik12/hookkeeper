@@ -98,7 +98,7 @@ const worker = new Worker(
 
         if (!success) throw new Error(errorMessage ?? "Delivery failed ");
     },
-    { connection: redisConnection, concurrency: 10 }
+    { connection: redisConnection, concurrency: 50 }
 );
 
 worker.on("completed", (job) => console.log(`Delivered job ${job.id}`));
