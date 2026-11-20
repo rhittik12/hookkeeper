@@ -6,6 +6,10 @@ The platform accepts events over a REST API, queues them for delivery, and relia
 
 ---
 
+https://github.com/user-attachments/assets/8e5aeb60-f10c-41e3-b023-594c95e07029
+
+---
+
 ## High-Level Architecture
 
 ```mermaid
